@@ -49,7 +49,6 @@
         #date { font-size: 1.2rem; color: #aaa; }
         h2 { margin-top: 0; font-size: 1.5rem; border-left: 4px solid var(--accent-color); padding-left: 10px; }
         
-        /* 巴士預報樣式 */
         .bus-item {
             display: flex;
             justify-content: space-between;
@@ -69,7 +68,6 @@
         .eta-time { font-size: 1.3rem; font-weight: bold; color: #2ecc71; }
         .eta-next { font-size: 0.95rem; color: #aaa; margin-left: 10px; }
 
-        /* 行程手動輸入樣式 */
         .schedule-item {
             display: flex;
             align-items: center;
@@ -86,7 +84,6 @@
         }
         .schedule-text { flex-grow: 1; font-size: 1.1rem; }
         
-        /* 行程輸入編輯器 */
         .admin-panel {
             grid-column: 1 / -1;
             background: #252525;
@@ -121,7 +118,7 @@
         <div style="font-size: 1.5rem;">🏠 元朗屋企儀表板</div>
     </div>
 
-    <!-- 巴士實時到站 (ETA) -->
+    <!-- 巴士實時到站 -->
     <div class="card">
         <h2>🚌 樓下巴士到站時間</h2>
         <div id="bus-container">
@@ -129,12 +126,10 @@
         </div>
     </div>
 
-    <!-- 個人行程表（可動態輸入） -->
+    <!-- 個人行程表 -->
     <div class="card">
         <h2>📅 今日行程 / 備忘錄</h2>
-        <div id="schedule-container">
-            <!-- 由 JavaScript 動態生成 -->
-        </div>
+        <div id="schedule-container"></div>
     </div>
 
     <!-- 行程輸入後台 -->
@@ -143,133 +138,30 @@
         <input type="text" id="new-time" placeholder="時間 (e.g. 08:30)" style="width: 120px;">
         <input type="text" id="new-text" placeholder="行程內容 (e.g. 出門搭 K68)" style="width: 300px;">
         <button onclick="addSchedule()">新增項目</button>
-        <span style="font-size: 0.85rem; color: #888; margin-left:15px;">*行程會自動保存在這部平板/手機內。</span>
+        <span style="font-size: 0.85rem; color: #888; margin-left:15px;">*行程會自動保存在這部裝置內。</span>
     </div>
 </div>
 
 <script>
-    // 1. 更新時鐘功能 (確保完全獨立運作，不受 API 錯誤影響)
+    // ======= 核心 1: 基礎時鐘（確保最優先且絕對獨立運行） =======
     function updateClock() {
-        try {
-            const now = new Date();
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('date').innerText = now.toLocaleDateString('zh-HK', options);
-            document.getElementById('clock').innerText = now.toLocaleTimeString('zh-HK', { hour12: false });
-        } catch (e) {
-            console.error("Clock error:", e);
-        }
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('date').innerText = now.toLocaleDateString('zh-HK', options);
+        document.getElementById('clock').innerText = now.toLocaleTimeString('zh-HK', { hour12: false });
     }
     setInterval(updateClock, 1000);
     updateClock();
 
-    // 2. 實時巴士數據主要調用器
-    async function fetchAllBusETA() {
-        const container = document.getElementById('bus-container');
-        container.innerHTML = ''; // 清空重新載入
-
-        // 分開處理，確保其中一個壞掉不影響另一個
-        await getK68ETA(container);
-        await get68FETA(container);
-    }
-
-    // === 港鐵 K68 處理邏輯 ===
-    async function getK68ETA(container) {
-        try {
-            const mtrUrl = 'https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule';
-            const mtrResponse = await fetch(mtrUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ routeName: 'K68', language: 'zh' })
-            });
-            const mtrData = await mtrResponse.json();
-            
-            let k68Text = "暫無班次";
-            let k68NextText = "";
-
-            if (mtrData && mtrData.busStopList) {
-                const myStop = mtrData.busStopList.find(stop => stop.busStopId === 'K68-U150');
-                if (myStop && myStop.busList && myStop.busList.length > 0) {
-                    let sec1 = parseInt(myStop.busList[0].arrivalTimeInSecond || 0);
-                    let diffMins1 = Math.max(0, Math.round(sec1 / 60));
-                    k68Text = diffMins1 === 0 ? "即將到站" : `${diffMins1} 分鐘`;
-                    
-                    if (myStop.busList[1]) {
-                        let sec2 = parseInt(myStop.busList[1].arrivalTimeInSecond || 0);
-                        let diffMins2 = Math.max(0, Math.round(sec2 / 60));
-                        k68NextText = `下班: ${diffMins2}分`;
-                    }
-                }
-            }
-            renderBusItem(container, 'K68', '南元朗官立小學', k68Text, k68NextText, 'mtr');
-        } catch (e) {
-            console.error("K68 Error:", e);
-            renderBusItem(container, 'K68', '南元朗官立小學', '❌ 載入失敗', '', 'mtr');
-        }
-    }
-
-    // === 九巴 68F 處理邏輯 ===
-    async function get68FETA(container) {
-        try {
-            const kmbUrl = 'https://etabus.gov.hk';
-            const kmbResponse = await fetch(kmbUrl);
-            const kmbData = await kmbResponse.json();
-            
-            let f68Text = "暫無班次";
-            let f68NextText = "";
-
-            if (kmbData && kmbData.data) {
-                let etaList = kmbData.data.filter(item => item.route === '68F');
-                if (etaList.length > 0 && etaList[0].eta) {
-                    const now = new Date();
-                    const etaTime1 = new Date(etaList[0].eta);
-                    const diffMins1 = Math.max(0, Math.round((etaTime1 - now) / 60000));
-                    f68Text = diffMins1 === 0 ? "即將到站" : `${diffMins1} 分鐘`;
-
-                    if (etaList[1] && etaList[1].eta) {
-                        const etaTime2 = new Date(etaList[1].eta);
-                        const diffMins2 = Math.max(0, Math.round((etaTime2 - now) / 60000));
-                        f68NextText = `下班: ${diffMins2}分`;
-                    }
-                }
-            }
-            renderBusItem(container, '68F', '翹翠峰 (第2個)', f68Text, f68NextText, 'kmb');
-        } catch (e) {
-            console.error("68F Error:", e);
-            renderBusItem(container, '68F', '翹翠峰 (第2個)', '❌ 載入失敗', '', 'kmb');
-        }
-    }
-
-    function renderBusItem(container, route, stopName, eta, nextEta, companyClass) {
-        const div = document.createElement('div');
-        div.className = 'bus-item';
-        div.innerHTML = `
-            <div>
-                <span class="bus-badge ${companyClass}">${route}</span>
-                <span style="margin-left:10px; color:#ccc;">${stopName}</span>
-            </div>
-            <div>
-                <span class="eta-time">${eta}</span>
-                <span class="eta-next">${nextEta}</span>
-            </div>
-        `;
-        container.appendChild(div);
-    }
-
-    // 每 30 秒自動整理一次巴士數據
-    setInterval(fetchAllBusETA, 30000);
-    fetchAllBusETA();
-
-
-    // 3. 手動輸入行程控制系統 (LocalStorage)
+    // ======= 核心 2: 行程儲存管理功能 =======
     let mySchedules = JSON.parse(localStorage.getItem('home_schedules')) || [
-        { time: '08:15', text: '醒黎準備返工 / 睇 K68 巴士時間' },
+        { time: '08:15', text: '睇 K68 巴士時間準備出門' },
         { time: '12:30', text: '出元朗市中心食晏晝飯' }
     ];
 
     function displaySchedules() {
         const container = document.getElementById('schedule-container');
         container.innerHTML = '';
-        
         mySchedules.sort((a, b) => a.time.localeCompare(b.time));
 
         if (mySchedules.length === 0) {
@@ -279,3 +171,111 @@
 
         mySchedules.forEach((item, index) => {
             const div = document.createElement('div');
+            div.className = 'schedule-item';
+            div.innerHTML = `
+                <div class="schedule-time">${item.time}</div>
+                <div class="schedule-text">${item.text}</div>
+                <button class="delete-btn" onclick="deleteSchedule(${index})">✕</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function addSchedule() {
+        const timeInput = document.getElementById('new-time');
+        const textInput = document.getElementById('new-text');
+        if (!timeInput.value || !textInput.value) return alert('請填寫時間和內容！');
+
+        mySchedules.push({ time: timeInput.value, text: textInput.value });
+        localStorage.setItem('home_schedules', JSON.stringify(mySchedules));
+        timeInput.value = ''; textInput.value = '';
+        displaySchedules();
+    }
+
+    function deleteSchedule(index) {
+        mySchedules.splice(index, 1);
+        localStorage.setItem('home_schedules', JSON.stringify(mySchedules));
+        displaySchedules();
+    }
+    displaySchedules();
+
+    // ======= 核心 3: 巴士 API 異步調用（出錯隔離防線） =======
+    async function fetchAllBusETA() {
+        const container = document.getElementById('bus-container');
+        container.innerHTML = ''; 
+
+        // 獨立呼叫 K68
+        try {
+            await getK68ETA(container);
+        } catch(e) { 
+            console.error(e); 
+            renderBusItem(container, 'K68', '南元朗官立小學', '系統異常', '', 'mtr');
+        }
+
+        // 獨立呼叫 68F
+        try {
+            await get68FETA(container);
+        } catch(e) { 
+            console.error(e); 
+            renderBusItem(container, '68F', '翹翠峰 (第2個)', '系統異常', '', 'kmb');
+        }
+    }
+
+    async function getK68ETA(container) {
+        const mtrUrl = 'https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule';
+        const response = await fetch(mtrUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ routeName: 'K68', language: 'zh' })
+        });
+        const mtrData = await response.json();
+        
+        let k68Text = "暫無班次";
+        let k68NextText = "";
+
+        if (mtrData && mtrData.busStopList) {
+            const myStop = mtrData.busStopList.find(stop => stop.busStopId === 'K68-U150');
+            if (myStop && myStop.busList && myStop.busList.length > 0) {
+                let min1 = Math.max(0, Math.round(parseInt(myStop.busList[0].arrivalTimeInSecond || 0) / 60));
+                k68Text = min1 === 0 ? "即將到站" : `${min1} 分鐘`;
+                
+                if (myStop.busList[1]) {
+                    let min2 = Math.max(0, Math.round(parseInt(myStop.busList[1].arrivalTimeInSecond || 0) / 60));
+                    k68NextText = `下班: ${min2}分`;
+                }
+            }
+        }
+        renderBusItem(container, 'K68', '南元朗官立小學', k68Text, k68NextText, 'mtr');
+    }
+
+    async function get68FETA(container) {
+        const kmbUrl = 'https://etabus.gov.hk';
+        const response = await fetch(kmbUrl);
+        const kmbData = await response.json();
+        
+        let f68Text = "暫無班次";
+        let f68NextText = "";
+
+        if (kmbData && kmbData.data) {
+            let etaList = kmbData.data.filter(item => item.route === '68F');
+            if (etaList.length > 0) {
+                const now = new Date();
+                
+                // 讀取陣列中第一班車 [0]
+                if (etaList[0] && etaList[0].eta) {
+                    const diffMins1 = Math.max(0, Math.round((new Date(etaList[0].eta) - now) / 60000));
+                    f68Text = diffMins1 === 0 ? "即將到站" : `${diffMins1} 分鐘`;
+                }
+                // 讀取陣列中第二班車 [1]
+                if (etaList[1] && etaList[1].eta) {
+                    const diffMins2 = Math.max(0, Math.round((new Date(etaList[1].eta) - now) / 60000));
+                    f68NextText = `下班: ${diffMins2}分`;
+                }
+            }
+        }
+        renderBusItem(container, '68F', '翹翠峰 (第2個)', f68Text, f68NextText, 'kmb');
+    }
+
+    function renderBusItem(container, route, stopName, eta, nextEta, companyClass) {
+        const div = document.createElement('div');
+        div.className = 'bus-item';
