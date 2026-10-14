@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>屋企智慧 Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #ffffff;
+            --accent-color: #ff9f43;
+            --bus-mtr: #5d2b8b;
+            --bus-kmb: #d63031;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        @media (max-width: 768px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .header-section {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        #clock { font-size: 3rem; font-weight: bold; color: var(--accent-color); }
+        #date { font-size: 1.2rem; color: #aaa; }
+        h2 { margin-top: 0; font-size: 1.5rem; border-left: 4px solid var(--accent-color); padding-left: 10px; }
+        
+        /* 巴士預報樣式 */
+        .bus-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #333;
+        }
+        .bus-badge {
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #fff;
+        }
+        .mtr { background-color: var(--bus-mtr); }
+        .kmb { background-color: var(--bus-kmb); }
+        .eta-time { font-size: 1.3rem; font-weight: bold; color: #2ecc71; }
+        .eta-next { font-size: 0.95rem; color: #aaa; margin-left: 10px; }
+
+        /* 行程手動輸入樣式 */
+        .schedule-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            background: #2d2d2d;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .schedule-time {
+            width: 70px;
+            font-weight: bold;
+            color: var(--accent-color);
+            font-size: 1.1rem;
+        }
+        .schedule-text { flex-grow: 1; font-size: 1.1rem; }
+        
+        /* 行程輸入編輯器 */
+        .admin-panel {
+            grid-column: 1 / -1;
+            background: #252525;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+            border: 1px dashed #555;
+        }
+        .admin-panel input {
+            background: #333; color: #fff; border: 1px solid #555;
+            padding: 8px; border-radius: 5px; margin-right: 10px;
+        }
+        .admin-panel button {
+            background: var(--accent-color); border: none; padding: 8px 15px;
+            border-radius: 5px; cursor: pointer; font-weight: bold;
+        }
+        .delete-btn {
+            background: #ff4d4d; border: none; color: white; padding: 4px 8px;
+            border-radius: 4px; cursor: pointer; margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <!-- 頂部時間 -->
+    <div class="header-section">
+        <div>
+            <div id="clock">00:00:00</div>
+            <div id="date">2026年10月14日</div>
+        </div>
+        <div style="font-size: 1.5rem;">🏠 元朗屋企儀表板</div>
+    </div>
+
+    <!-- 巴士實時到站 (ETA) -->
+    <div class="card">
+        <h2>🚌 樓下巴士到站時間</h2>
+        <div id="bus-container">
+            <div class="bus-item">正在獲取最新巴士到站數據...</div>
+        </div>
+    </div>
+
+    <!-- 個人行程表（可動態輸入） -->
+    <div class="card">
+        <h2>📅 今日行程 / 備忘錄</h2>
+        <div id="schedule-container">
+            <!-- 由 JavaScript 動態生成 -->
+        </div>
+    </div>
+
+    <!-- 行程輸入後台（直接在網頁上輸入） -->
+    <div class="admin-panel">
+        <h3 style="margin-top:0; color: #aaa;">✏️ 新增今日行程</h3>
+        <input type="text" id="new-time" placeholder="時間 (e.g. 08:30)" style="width: 120px;">
+        <input type="text" id="new-text" placeholder="行程內容 (e.g. 出門搭 K68)" style="width: 300px;">
+        <button onclick="addSchedule()">新增項目</button>
+        <span style="font-size: 0.85rem; color: #888; margin-left:15px;">*行程會自動保存在這部平板/手機內，重新整理不會不見。</span>
+    </div>
+</div>
+
+<script>
+    // 1. 更新時鐘功能
+    function updateClock() {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('date').innerText = now.toLocaleDateString('zh-HK', options);
+        document.getElementById('clock').innerText = now.toLocaleTimeString('zh-HK', { hour12: false });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // 2. 實時巴士數據 API 機制
+    async function fetchBusETA() {
+        const container = document.getElementById('bus-container');
+        container.innerHTML = ''; 
+
+        // === 項目一：港鐵巴士 K68 (南元朗官立小學) ===
+        try {
+            // 港鐵巴士官方 API
+            const mtrUrl = 'https://mtr.com.hk';
+            const mtrResponse = await fetch(mtrUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ routeName: 'K68' })
+            });
+            const mtrData = await mtrResponse.json();
+            
+            // 篩選出「南元朗官立小學」 (站號: K68-U150) 的到站預報
+            let k68BusItems = mtrData.busStopList ? mtrData.busStopList.find(stop => stop.busStopId === 'K68-U150') : null;
+            
+            let k68Text = "暫無班次";
+            let k68NextText = "";
+            
+            if (k68BusItems && k68BusItems.busList && k68BusItems.busList.length > 0) {
+                let diffMins1 = Math.max(0, Math.round(parseInt(k68BusItems.busList[0].arrivalTimeInSecond) / 60));
+                k68Text = diffMins1 === 0 ? "即將到站" : `${diffMins1} 分鐘`;
+                
+                if (k68BusItems.busList[1]) {
+                    let diffMins2 = Math.max(0, Math.round(parseInt(k68BusItems.busList[1].arrivalTimeInSecond) / 60));
+                    k68NextText = `下班: ${diffMins2}分`;
+                }
+            }
+
+            renderBusItem('K68', '南元朗官立小學', k68Text, k68NextText, 'mtr');
+        } catch (e) {
+            console.error(e);
+            container.innerHTML += `<div class="bus-item">❌ 無法連線港鐵 K68 API</div>`;
+        }
+
+        // === 項目二：九巴 68F (翹翠峰第 2 個站 - 往形點方向) ===
+        try {
+            // 九巴政府開放 API (翹翠峰站號為 003290)
+            const kmbUrl = 'https://etabus.gov.hk';
+            const kmbResponse = await fetch(kmbUrl);
+            const kmbData = await kmbResponse.json();
+            
+            // 篩選出 68F 路線
+            let etaList = kmbData.data.filter(item => item.route === '68F');
+            
+            let f68Text = "暫無班次";
+            let f68NextText = "";
+
+            if (etaList.length > 0 && etaList[0].eta) {
+                const now = new Date();
+                const etaTime1 = new Date(etaList[0].eta);
+                const diffMins1 = Math.max(0, Math.round((etaTime1 - now) / 60000));
+                f68Text = diffMins1 === 0 ? "即將到站" : `${diffMins1} 分鐘`;
+
+                if (etaList[1] && etaList[1].eta) {
+                    const etaTime2 = new Date(etaList[1].eta);
+                    const diffMins2 = Math.max(0, Math.round((etaTime2 - now) / 60000));
+                    f68NextText = `下班: ${diffMins2}分`;
+                }
+            }
+
+            renderBusItem('68F', '翹翠峰 (第2個)', f68Text, f68NextText, 'kmb');
+        } catch (e) {
+            console.error(e);
+            container.innerHTML += `<div class="bus-item">❌ 無法連線九巴 68F API</div>`;
+        }
+    }
+
+    function renderBusItem(route, stopName, eta, nextEta, companyClass) {
+        const container = document.getElementById('bus-container');
+        const div = document.createElement('div');
+        div.className = 'bus-item';
+        div.innerHTML = `
+            <div>
+                <span class="bus-badge ${companyClass}">${route}</span>
+                <span style="margin-left:10px; color:#ccc;">${stopName}</span>
+            </div>
+            <div>
+                <span class="eta-time">${eta}</span>
+                <span class="eta-next">${nextEta}</span>
+            </div>
+        `;
+        container.appendChild(div);
+    }
+
+    // 每 30 秒更新一次巴士時間
+    setInterval(fetchBusETA, 30000);
+    fetchBusETA();
+
+
+    // 3. 手動輸入行程控制系統 (使用瀏覽器 LocalStorage 儲存數據)
+    let mySchedules = JSON.parse(localStorage.getItem('home_schedules')) || [
+        { time: '08:15', text: '醒黎準備返工 / 睇 K68 巴士時間' },
+        { time: '12:30', text: '出元朗市中心食晏晝飯' }
+    ];
+
+    function displaySchedules() {
+        const container = document.getElementById('schedule-container');
+        container.innerHTML = '';
+        
+        // 按照時間順序排序
+        mySchedules.sort((a, b) => a.time.localeCompare(b.time));
+
+        if (mySchedules.length === 0) {
+            container.innerHTML = '<div style="color:#666; padding: 10px;">目前沒有行程，請在下方輸入。</div>';
+            return;
+        }
+
+        mySchedules.forEach((item, index) => {
+            const div = document.createElement('div');
+            div.className = 'schedule-item';
+            div.innerHTML = `
+                <div class="schedule-time">${item.time}</div>
+                <div class="schedule-text">${item.text}</div>
+                <button class="delete-btn" onclick="deleteSchedule(${index})">✕</button>
+            `;
